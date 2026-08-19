@@ -1,0 +1,171 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// Find composer autoloader
+$autoloadFiles = [
+    __DIR__ . '/../vendor/autoload.php',
+    __DIR__ . '/../../../autoload.php',
+];
+
+$autoloadFound = false;
+foreach ($autoloadFiles as $file) {
+    if (file_exists($file)) {
+        require $file;
+        $autoloadFound = true;
+        break;
+    }
+}
+
+if (!$autoloadFound) {
+    fwrite(STDERR, "Error: Autoloader not found. Please run 'composer install'.\n");
+    exit(1);
+}
+
+use Aicrion\IrCurrencyRateScraper\CurrencyScraper;
+use Aicrion\IrCurrencyRateScraper\Enums\RateCategory;
+
+$args = array_slice($argv, 1);
+$command = $args[0] ?? 'help';
+
+$scraper = CurrencyScraper::create();
+
+function printHeader(): void
+{
+    echo "========================================================\n";
+    echo " 🇮🇷 Iranian Currency, Gold & Crypto Scraper CLI\n";
+    echo "========================================================\n\n";
+}
+
+function printHelp(): void
+{
+    printHeader();
+    echo "Usage: php bin/currency <command> [arguments] [options]\n\n";
+    echo "Available Commands:\n";
+    echo "  rate <symbol|slug>       Get real-time rate (e.g. USD, EUR, IR18K, BTC, SEKEE)\n";
+    echo "  table [category]         Display market rates table (free_currency, gold, coin, crypto)\n";
+    echo "  convert <amt> <from> <to> Convert currency (e.g. convert 100 USD TOMAN)\n";
+    echo "  gold <grams> [karat]     Calculate gold jewelry value (e.g. gold 4.5 18)\n";
+    echo "  search <query>           Search across all financial markets\n";
+    echo "  warmup                   Preload and cache all market rates\n";
+    echo "  help                     Show this help menu\n\n";
+    echo "Examples:\n";
+    echo "  php bin/currency rate USD\n";
+    echo "  php bin/currency convert 100 USD TOMAN\n";
+    echo "  php bin/currency gold 5 18\n";
+    echo "  php bin/currency table gold\n";
+}
+
+try {
+    switch ($command) {
+        case 'rate':
+            $symbol = $args[1] ?? 'USD';
+            $rate = $scraper->getRate($symbol);
+            printHeader();
+            echo "Asset:          {$rate->getTitle()} (" . ($rate->getSymbol() ?? $rate->getId()) . ")\n";
+            echo "Category:       {$rate->getCategory()}\n";
+            echo "Price (Rial):   " . number_format($rate->getPrice()) . " IRR\n";
+            echo "Price (Toman):  " . number_format($rate->getPriceInTomans()) . " Toman\n";
+            if ($rate->getBuyPrice() !== null) {
+                echo "Buy Price:      " . number_format($rate->getBuyPrice()) . " IRR\n";
+            }
+            if ($rate->getSellPrice() !== null) {
+                echo "Sell Price:     " . number_format($rate->getSellPrice()) . " IRR\n";
+            }
+            if ($rate->getChangePercent() !== null) {
+                $sign = $rate->getChangePercent() >= 0 ? '+' : '';
+                echo "24h Change:     {$sign}{$rate->getChangePercent()}%\n";
+            }
+            if ($rate->getMinPrice() !== null && $rate->getMaxPrice() !== null) {
+                echo "24h Range:      " . number_format($rate->getMinPrice()) . " - " . number_format($rate->getMaxPrice()) . "\n";
+            }
+            echo "Updated At:     {$rate->getUpdatedAt()->format('Y-m-d H:i:s')}\n";
+            echo "Source:         {$rate->getSource()}\n";
+            break;
+
+        case 'table':
+            $category = $args[1] ?? RateCategory::FREE_CURRENCY;
+            $collection = $scraper->getCategory($category);
+            printHeader();
+            echo "Market: " . strtoupper($category) . " (" . $collection->count() . " items)\n";
+            echo str_repeat('-', 75) . "\n";
+            printf("%-20s | %-10s | %18s | %10s\n", "Title", "Symbol", "Price (Rial)", "Change %");
+            echo str_repeat('-', 75) . "\n";
+            foreach ($collection as $r) {
+                $changeStr = $r->getChangePercent() !== null
+                    ? ($r->getChangePercent() >= 0 ? '+' : '') . $r->getChangePercent() . '%'
+                    : '-';
+                printf(
+                    "%-20s | %-10s | %18s | %10s\n",
+                    mb_strimwidth($r->getTitle(), 0, 20, '...'),
+                    $r->getSymbol() ?? substr($r->getId(), 0, 10),
+                    number_format($r->getPrice()),
+                    $changeStr
+                );
+            }
+            echo str_repeat('-', 75) . "\n";
+            break;
+
+        case 'convert':
+            $amount = isset($args[1]) ? (float) $args[1] : 1.0;
+            $from = $args[2] ?? 'USD';
+            $to = $args[3] ?? 'TOMAN';
+
+            $result = $scraper->convert($amount, $from, $to);
+            printHeader();
+            echo sprintf(
+                "Conversion: %s %s = %s %s\n",
+                number_format($amount, 4),
+                strtoupper($from),
+                number_format($result, 2),
+                strtoupper($to)
+            );
+            break;
+
+        case 'gold':
+            $grams = isset($args[1]) ? (float) $args[1] : 1.0;
+            $karat = isset($args[2]) ? (int) $args[2] : 18;
+            $wage = isset($args[3]) ? (float) $args[3] : 0.0;
+
+            $calc = $scraper->calculateGold($grams, $karat, $wage);
+            printHeader();
+            echo "Gold Weight:     {$calc['grams']} Grams ({$calc['karat']} Karat)\n";
+            echo "Gram Price:      " . number_format($calc['gram_price_rial']) . " Rial (" . number_format($calc['gram_price_toman']) . " Toman)\n";
+            echo "Raw Gold Value:  " . number_format($calc['base_gold_rial']) . " Rial\n";
+            echo "Wage ({$calc['wage_percent']}%):      " . number_format($calc['wage_amount_rial']) . " Rial\n";
+            echo "Profit ({$calc['profit_percent']}%):    " . number_format($calc['profit_amount_rial']) . " Rial\n";
+            echo "VAT Tax ({$calc['tax_percent']}%):   " . number_format($calc['tax_amount_rial']) . " Rial\n";
+            echo str_repeat('-', 50) . "\n";
+            echo "TOTAL (Rial):    " . number_format($calc['total_price_rial']) . " Rial\n";
+            echo "TOTAL (Toman):   " . number_format($calc['total_price_toman']) . " Toman\n";
+            break;
+
+        case 'search':
+            $query = $args[1] ?? 'دلار';
+            $results = $scraper->search($query);
+            printHeader();
+            echo "Search results for '{$query}' (" . $results->count() . " found):\n\n";
+            foreach ($results as $r) {
+                echo " - {$r->getTitle()} [{$r->getCategory()}]: " . number_format($r->getPrice()) . " {$r->getUnit()} (" . number_format($r->getPriceInTomans()) . " Toman)\n";
+            }
+            break;
+
+        case 'warmup':
+            printHeader();
+            echo "Preloading and caching all financial markets...\n";
+            $startTime = microtime(true);
+            $rates = $scraper->warmup();
+            $elapsed = round((microtime(true) - $startTime) * 1000, 2);
+            echo "Successfully loaded and cached {$rates->count()} assets in {$elapsed} ms.\n";
+            break;
+
+        case 'help':
+        default:
+            printHelp();
+            break;
+    }
+} catch (\Throwable $e) {
+    fwrite(STDERR, "\nError: " . $e->getMessage() . "\n");
+    exit(1);
+}

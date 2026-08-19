@@ -1,0 +1,41 @@
+{
+    "status": "success",
+    "data": [
+        {
+            "name": "Bitcoin",
+            "fa_name": "بیت کوین",
+            "symbol": "BTC",
+            "price_usd": 96550.00,
+            "change_24h": 2.45,
+            "low_24h": 94000.00,
+            "high_24h": 97000.00
+        },
+        {
+            "name": "Ethereum",
+            "fa_name": "اتریوم",
+            "symbol": "ETH",
+            "price_usd": 2850.25,
+            "change_24h": -0.85,
+            "low_24h": 2800.00,
+            "high_24h": 2900.00
+        },
+        {
+            "name": "Tether",
+            "fa_name": "تتر",
+            "symbol": "USDT",
+            "price_usd": 1.00,
+            "change_24h": 0.01,
+            "low_24h": 0.999,
+            "high_24h": 1.001
+        },
+        {
+            "name": "Solana",
+            "fa_name": "سولانا",
+            "symbol": "SOL",
+            "price_usd": 195.50,
+            "change_24h": 5.20,
+            "low_24h": 185.00,
+            "high_24h": 200.00
+        }
+    ]
+}
